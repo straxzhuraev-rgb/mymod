@@ -165,7 +165,6 @@ window.MYMOD = (function () {
     w.innerHTML =
       "<h3 style='margin:0 0 14px;color:#66ccff'>MYMOD</h3>" +
       "<label style='display:block;margin:8px 0'><input type='checkbox' id='mymod_cfg_hud'> Показывать HUD</label>" +
-      "<label style='display:block;margin:8px 0'><input type='checkbox' id='mymod_cfg_zoom'> Зум (колесо мыши) + C (приблизить)</label>" +
       "<div style='margin-top:12px;font-size:12px;color:#999'>Версия мода: <span id='mymod_ver'></span></div>" +
       "<div style='margin-top:18px;text-align:right'>" +
       "<button id='mymod_save' style='padding:8px 18px;cursor:pointer;border:none;border-radius:6px;background:#3377ff;color:#fff;font:inherit'>Сохранить</button>" +
@@ -173,14 +172,11 @@ window.MYMOD = (function () {
       "</div>";
 
     var cbH = w.querySelector("#mymod_cfg_hud");
-    var cbZ = w.querySelector("#mymod_cfg_zoom");
     cbH.checked = !!cfg.hud;
-    cbZ.checked = !!cfg.zoom;
     w.querySelector("#mymod_ver").textContent = MYMOD_VER;
 
     w.querySelector("#mymod_save").onclick = function () {
       cfg.hud = cbH.checked;
-      cfg.zoom = cbZ.checked;
       saveCfg();                 // сохранить локально (без сервера)
       applyAll();
       closeSettings();
@@ -195,87 +191,9 @@ window.MYMOD = (function () {
     if (w) w.parentNode.removeChild(w);
   }
 
-  /* ---------------- Зум ---------------- */
-  var zoomEnabled = false;
-  var zoomHold = false;
-  var _cameraOrigUpdate = null;
-
-  // Игра каждый кадр вызывает camera.setTargetPosition([..., масштаб]),
-  // который затирает camera.target[Z]. Поэтому правильный способ —
-  // перехватить camera.update() и подменить итоговый масштаб ПОСЛЕ игры.
-  function makeZoomScale(base) {
-    // base — то, что игра посчитала сама. Возвращаем масштаб с учётом нашего зума.
-    var z = cfg.zoomKoef || 1;   // множитель из колеса мыши (1 = норма)
-    if (cfg.zoom && zoomHold) z *= 0.55; // зажатая C — приближение
-    return base * z;
-  }
-
-  function patchCamera() {
-    if (typeof camera === "undefined" || !camera) return;
-    if (_cameraOrigUpdate) return; // уже перехвачено
-    try {
-      var baseUpdate = camera.update.bind(camera);
-      camera.update = function () {
-        var r = baseUpdate();
-        // после того, как игра посчитала масштаб — применяем наш множитель
-        camera.scale = makeZoomScale(camera.scale);
-        return r;
-      };
-      _cameraOrigUpdate = baseUpdate;
-      log("Камера перехвачена для зума");
-    } catch (e) { log("Не удалось перехватить камеру: " + e.message); }
-  }
-
-  function onKeyDown(e) {
-    if (!cfg.zoom) return;
-    if (e.key === "c" || e.key === "C" || e.keyCode === 67) {
-      zoomHold = true;
-    }
-  }
-  function onKeyUp(e) {
-    if (!cfg.zoom) return;
-    if (e.key === "c" || e.key === "C" || e.keyCode === 67) {
-      zoomHold = false;
-    }
-  }
-
-  // Зум колесом мыши: меняем множитель cfg.zoomKoef
-  function onWheel(e) {
-    if (!cfg.zoom) return;
-    var cur = cfg.zoomKoef || 1;
-    var step = e.deltaY > 0 ? 1.1 : 0.9; // вниз — дальше, вверх — ближе
-    var next = cur * step;
-    next = Math.max(0.4, Math.min(3, next)); // ограничение
-    cfg.zoomKoef = next;
-    saveCfg();
-    if (e.preventDefault) e.preventDefault();
-  }
-
-  function initZoom() {
-    document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("keyup", onKeyUp);
-    document.addEventListener("wheel", onWheel, { passive: false });
-    // перехватываем камеру при первом включении и периодически (если игра пересоздаёт)
-    patchedCamTries = 0;
-    patchCamera();
-    zoomEnabled = !!cfg.zoom;
-  }
-  var patchedCamTries = 0;
-  setInterval(function () {
-    if (cfg.zoom && !_cameraOrigUpdate) {
-      patchCamera();
-      patchedCamTries++;
-      if (patchedCamTries > 100) { /* достаточно попыток */ }
-    }
-  }, 2000);
-
   /* ---------------- Применение настроек ---------------- */
   function applyAll() {
     hudToggle(!!cfg.hud);
-    if (cfg.zoom && !zoomEnabled) {
-      zoomEnabled = true;
-      initZoom();
-    }
   }
 
   /* ---------------- Кнопка «М» ---------------- */
@@ -298,7 +216,6 @@ window.MYMOD = (function () {
     hudCreate();
     btnCreate();
     applyAll();
-    initZoom();
 
     // периодический HUD-тик
     setInterval(hudUpdate, 500);
