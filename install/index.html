@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Мой мод — установка</title>
+<style>
+  body { font-family: Consolas, monospace; background: #111; color: #eee; margin: 0; padding: 40px 20px; }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { color: #66ccff; }
+  h2 { color: #99ddff; margin-top: 34px; }
+  code, .cfg { background: #222; padding: 2px 6px; border-radius: 4px; color: #ffd; }
+  ol li, ul li { margin: 8px 0; }
+  button { padding: 14px 26px; font-size: 17px; cursor: pointer; border: none;
+    border-radius: 8px; background: #3377ff; color: #fff; font-family: Consolas, monospace; }
+  button:hover { background: #5599ff; }
+  .hint { color: #ff9966; }
+  .box { background: #1a1a1a; border: 1px solid #333; border-radius: 10px; padding: 16px 20px; margin: 16px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Мой мод — установка</h1>
+  <div class="box">
+    <p><b>Что это.</b> Мод работает поверх игры через браузерное расширение
+    <b>Resource Override</b>: расширение подменяет несколько файлов игры на файлы мода.
+    Сами файлы игры не изменяются. Обновления мода происходят на сервере — переустанавливать ничего не нужно.</p>
+  </div>
+
+  <h2>Установка (4 шага)</h2>
+  <ol>
+    <li>Установи расширение <b>Resource Override</b>:
+      <a href="https://chromewebstore.google.com/detail/resource-override/ohpilhbphbbkfkmjgnjjmnbeeiipkkko" target="_blank" style="color:#66ccff">Chrome</a>
+      / <a href="https://addons.mozilla.org/ru/firefox/addon/resourceoverride/" target="_blank" style="color:#66ccff">Firefox</a>.</li>
+    <li>Нажми кнопку внизу — скачается файл <code>mod-config.ru</code>.</li>
+    <li>В расширении открой панель и загрузи этот файл
+      (<span class="hint">иконка расширения → Import/Загрузить</span>).</li>
+    <li>Убедись, что правило включено (переключатель <code>on</code>), обнови страницу игры (F5).
+      Если на странице игры появилась кнопка <b>«М»</b> в правом нижнем углу — мод работает.</li>
+  </ol>
+
+  <button id="dl">Скачать конфиг мода (mod-config.ru)</button>
+
+  <h2>Настройка под себя</h2>
+  <div class="box">
+    <p>Файл <code>mod-config.ru</code> содержит адрес сервера мода. Если домен или адреса файлов игры
+    изменились — правь его в текстовом редакторе и загружай заново (или правь правило прямо в расширении).</p>
+    <p class="hint">Правило с <code>*</code> в конце матча перехватывает и запросы с параметрами вида <code>core.js?v=123</code>.</p>
+  </div>
+
+  <h2>Обновление мода</h2>
+  <p>Ничего переустанавливать не надо: исправил файлы на сервере → все игроки получают новую версию
+  при следующем обновлении страницы игры (F5). Если браузер кэширует старый файл — добавь к адресу
+  в <code>replace</code> параметр версии: <code>.../visual.js?v=2</code>.</p>
+
+  <h2>Что внутри</h2>
+  <ul>
+    <li><code>mod/core.js</code> — тема игры + загрузчик модуля (шаблон, замени на пропатченый оригинал)</li>
+    <li><code>mod/gl-objects.js</code> — загрузчик модуля (шаблон)</li>
+    <li><code>mod/visual.js</code> — модуль мода (HUD, окно настроек)</li>
+    <li><code>mod/php/*.php</code> — JSONP-«сервер настроек» (сохраняет настройки в файлы, без БД)</li>
+    <li><code>saves/</code> — файлы настроек игроков (два ключа, закрыто от посторонних)</li>
+  </ul>
+</div>
+
+<script>
+// ====== КОНФИГУРАЦИЯ ПОД ТВОЙ ДОМЕН ======
+const DOMAIN = "https://straxzhuraev-rgb.github.io/mymod/mod";   // ← твой GitHub Pages адрес
+
+// Правила подмены: [адрес файла игры, твой файл]
+const RULES = [
+  ["https://www.puziri.net/js/core.js*",           DOMAIN + "/core.js"],
+  ["https://www.puziri.net/js/gl-objects.js*",     DOMAIN + "/gl-objects.js"],
+  ["https://www.puziri.net/img/welcome/bg4.jpg",   DOMAIN + "/img/bg4.jpg"]
+];
+// ============================================
+
+document.getElementById("dl").onclick = function () {
+  const cfg = {
+    v: 1,
+    data: [{
+      id: "d1",
+      matchUrl: "*",
+      rules: RULES.map(([m, r]) => ({
+        type: "normalOverride",
+        match: m,
+        replace: r,
+        on: true
+      })),
+      on: true
+    }]
+  };
+  const blob = new Blob([JSON.stringify(cfg)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "mod-config.ru";
+  a.click();
+};
+</script>
+</body>
+</html>
