@@ -119,12 +119,53 @@ window.MYMOD = (function () {
         if (game.player.mass !== undefined) txt += " | Еда: " + Math.round(game.player.mass);
         if (game.player.cellsCount !== undefined) txt += " | Клетки: " + game.player.cellsCount;
       }
+      if (killsCount !== undefined) txt += " | Убийств: " + killsCount;
+      if (typeof game !== "undefined" && game && game.playerMana !== undefined) {
+        txt += " | Мана: " + Math.round(game.playerMana);
+      }
       if (typeof countFPS !== "undefined" && countFPS && countFPS.fps !== undefined) {
         txt += " | FPS: " + countFPS.fps;
       }
     } catch (e) {}
     el.textContent = txt;
   }
+
+  /* ---------------- Счётчик убийств ---------------- */
+  var killsCount = 0;
+  var _origUpdatePlayerEaten = null;
+  window.MYMOD_RESET_KILLS = function () { killsCount = 0; };
+
+  // Игра вызывает updatePlayerEaten(data), когда кого-то съели.
+  // data[1] — кого съели, data[2] — кто съел (id игрока).
+  // Перехватываем: если съел мой игрок — увеличиваем счётчик.
+  function patchKills() {
+    if (typeof game === "undefined" || !game) return;
+    if (_origUpdatePlayerEaten) return; // уже перехвачено
+    try {
+      var base = game.updatePlayerEaten.bind(game);
+      game.updatePlayerEaten = function (data) {
+        var r = base(data); // даём игре обработать как обычно
+        if (data && data[2] !== undefined) {
+          var myId = this.player ? this.player.id : null;
+          // data[2] — это "pX" (id игрока, который съел). Сравниваем с моим player.id.
+          if (myId != null && data[2] === myId) {
+            killsCount++;
+            hudUpdate();
+          }
+        }
+        return r;
+      };
+      _origUpdatePlayerEaten = base;
+      log("Счётчик убийств подключён");
+    } catch (e) { log("Не удалось перехватить убийства: " + e.message); }
+  }
+  // Периодически перехватываем на случай, если игра пересоздаёт объект
+  var _killsPatchedOnce = false;
+  setInterval(function () {
+    if (typeof game !== "undefined" && game && !_origUpdatePlayerEaten) {
+      patchKills();
+    }
+  }, 1500);
 
   /* ---------------- Быстрые сообщения (бинды) ---------------- */
   function updBinds() {
@@ -215,6 +256,7 @@ window.MYMOD = (function () {
   function init() {
     hudCreate();
     btnCreate();
+    patchKills();   // перехват счётчика убийств (если игра уже доступна)
     applyAll();
 
     // периодический HUD-тик
