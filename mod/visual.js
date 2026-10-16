@@ -150,7 +150,7 @@ window.MYMOD = (function () {
     w.innerHTML =
       "<h3 style='margin:0 0 14px;color:#66ccff'>MYMOD</h3>" +
       "<label style='display:block;margin:8px 0'><input type='checkbox' id='mymod_cfg_hud'> Показывать HUD</label>" +
-      "<label style='display:block;margin:8px 0'><input type='checkbox' id='mymod_cfg_zoom'> Включить зум (заготовка)</label>" +
+      "<label style='display:block;margin:8px 0'><input type='checkbox' id='mymod_cfg_zoom'> Зум (колесо мыши) + C (приблизить)</label>" +
       "<div style='margin-top:12px;font-size:12px;color:#999'>Версия мода: <span id='mymod_ver'></span></div>" +
       "<div style='margin-top:18px;text-align:right'>" +
       "<button id='mymod_save' style='padding:8px 18px;cursor:pointer;border:none;border-radius:6px;background:#3377ff;color:#fff;font:inherit'>Сохранить</button>" +
@@ -180,9 +180,56 @@ window.MYMOD = (function () {
     if (w) w.parentNode.removeChild(w);
   }
 
+  /* ---------------- Зум ---------------- */
+  var zoomEnabled = false;
+  var zoomHold = false;
+
+  // Мгновенный зум по зажатию клавиши C
+  function onKeyDown(e) {
+    if (!cfg.zoom) return;
+    if (e.key === "c" || e.key === "C" || e.keyCode === 67) {
+      zoomHold = true;
+      if (typeof camera !== "undefined" && camera && camera.target) {
+        camera.target[Z] = (camera.target[Z] || 1) * 0.55; // приблизить
+      }
+    }
+  }
+  function onKeyUp(e) {
+    if (!cfg.zoom) return;
+    if (e.key === "c" || e.key === "C" || e.keyCode === 67) {
+      zoomHold = false;
+      if (typeof camera !== "undefined" && camera && camera.target) {
+        camera.target[Z] = 1; // вернуть нормальный масштаб
+      }
+    }
+  }
+
+  // Зум колесом мыши
+  function onWheel(e) {
+    if (!cfg.zoom) return;
+    if (typeof camera === "undefined" || !camera || !camera.target) return;
+    var step = e.deltaY > 0 ? 1.1 : 0.9; // вниз — дальше, вверх — ближе
+    var cur = camera.target[Z] || 1;
+    var next = cur * step;
+    next = Math.max(0.3, Math.min(3, next)); // ограничение, чтобы не улететь
+    camera.target[Z] = next;
+    if (e.preventDefault) e.preventDefault();
+  }
+
+  function initZoom() {
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("keyup", onKeyUp);
+    document.addEventListener("wheel", onWheel, { passive: false });
+    zoomEnabled = !!cfg.zoom;
+  }
+
   /* ---------------- Применение настроек ---------------- */
   function applyAll() {
     hudToggle(!!cfg.hud);
+    if (cfg.zoom && !zoomEnabled) {
+      zoomEnabled = true;
+      initZoom();
+    }
   }
 
   /* ---------------- Кнопка «М» ---------------- */
@@ -205,6 +252,7 @@ window.MYMOD = (function () {
     hudCreate();
     btnCreate();
     applyAll();
+    initZoom();
 
     // периодический HUD-тик
     setInterval(hudUpdate, 500);
