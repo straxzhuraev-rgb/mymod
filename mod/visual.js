@@ -29,6 +29,21 @@ window.MYMOD = (function () {
   var binds = { name: [], text: [] };               // быстрые сообщения: name[1..8], text[1..8]
   var loaded = false;
 
+  // Локальное хранение настроек (localStorage) — работает без сервера.
+  var LS_KEY = "mymod_cfg_" + MYMOD_KEY;
+  try {
+    var saved = localStorage.getItem(LS_KEY);
+    if (saved) {
+      var parsed = JSON.parse(saved);
+      if (parsed && typeof parsed === "object") {
+        for (var k in parsed) if (parsed.hasOwnProperty(k)) cfg[k] = parsed[k];
+      }
+    }
+  } catch (e) { /* localStorage недоступен — работаем с дефолтами */ }
+  function saveCfg() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(cfg)); } catch (e) {}
+  }
+
   /* ---------------- Техпомощь ---------------- */
   function log() { try { console.log.apply(console, ["[mymod]"].concat([].slice.call(arguments))); } catch (e) {} }
   function hint(msg, color) {
@@ -166,8 +181,8 @@ window.MYMOD = (function () {
     w.querySelector("#mymod_save").onclick = function () {
       cfg.hud = cbH.checked;
       cfg.zoom = cbZ.checked;
+      saveCfg();                 // сохранить локально (без сервера)
       applyAll();
-      serverCall("setconfig.php", { Id: MYMOD_KEY, Val: cfg.hud ? 1 : 0, Data: JSON.stringify(cfg) });
       closeSettings();
       hint("Настройки сохранены");
     };
@@ -257,11 +272,10 @@ window.MYMOD = (function () {
     // периодический HUD-тик
     setInterval(hudUpdate, 500);
 
-    // загрузить настройки с сервера (JSONP), если доступен jQuery
+    // загрузить настройки: локально (localStorage), либо с сервера, если он настроен
     setTimeout(function () {
       if (MYMOD_SERVER === "" || MYMOD_SERVER.indexOf("ТВОЙ") !== -1) {
-        // сервер ещё не настроен — работаем с локальными настройками (localStorage)
-        log("Сервер не настроен — работаем с локальными настройками");
+        log("Сервер не настроен — настройки из localStorage");
         loaded = true;
         applyAll();
         return;
@@ -269,7 +283,7 @@ window.MYMOD = (function () {
       if (typeof $ !== "undefined" && $.ajax) {
         serverCall("config.php", {});
       } else {
-        log("jQuery не найден — работаем с локальными настройками");
+        log("jQuery не найден — настройки из localStorage");
         loaded = true;
         applyAll();
       }
