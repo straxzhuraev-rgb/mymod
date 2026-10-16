@@ -151,6 +151,7 @@ window.MYMOD = (function () {
           if (myId != null && data[2] === myId) {
             killsCount++;
             hudUpdate();
+            sayKillPhrase();   // свои фразы при убийстве
           }
         }
         return r;
@@ -167,7 +168,84 @@ window.MYMOD = (function () {
     }
   }, 1500);
 
-  /* ---------------- Быстрые сообщения (бинды) ---------------- */
+  /* ---------------- Свои фразы при убийстве/воскрешении ---------------- */
+  var killPhrases = [
+    ", ты просто чудо :)", ", благодарю за еду ;)", ", очень вкусный пузырь",
+    ", твоя душа теперь моя", ", ты был слишком вкусным", ", земля тебе пухом",
+    ", я освобождаю тебя от бремени массы", ", в следующий раз повезёт",
+    ", аккуратнее с животиком", ", я это съел - уже не отдам",
+    ", познакомься с моим отличным пищеварением", ", ты стал моим топливом",
+    ", это было вкусно!", ", маленький пузырик - большие амбиции"
+  ];
+  var respawnPhrases = [
+    "Я вернулся!", "Меня так просто не съесть", "Опять я!",
+    "Вкусненького тут много...", "Ну что, продолжаем?", "Я ещё поборюсь!",
+    "Смерть не остановила меня", "Кто следующий?", "Я закусил и снова в строю",
+    "Феникс воскрес!"
+  ];
+  var phraseTimer = 0;
+
+  function randPhrase(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+  function sayPhrase(txt) {
+    // не чаще 1 фразы в 3 секунды
+    var now = Date.now();
+    if (now - phraseTimer < 3000) return;
+    phraseTimer = now;
+    try {
+      if (typeof sendFastChat === "function") {
+        sendFastChat(txt);
+      } else if (game && game.player != null && typeof ws !== "undefined" && ws.send) {
+        ws.send({ cmd: ws_commands.chat, m: txt });
+      }
+    } catch (e) { log("Не удалось отправить фразу: " + e.message); }
+  }
+
+  function sayKillPhrase() {
+    if (!cfg.phrases) return; // фича включается в настройках (по умолчанию выкл)
+    sayPhrase(game.getPlayerName(game.player.id) + randPhrase(killPhrases));
+  }
+  function sayRespawnPhrase() {
+    if (!cfg.phrases) return;
+    sayPhrase(randPhrase(respawnPhrases));
+  }
+
+  // Воскрешение: перехватываем updateRespawnState (арена/босс) +
+  // отправка фразы при рестарте FFA (onReplayClick / WND_die open)
+  var _origUpdateRespawnState = null;
+  var _origOnReplayClick = null;
+  function patchRespawn() {
+    if (typeof game === "undefined" || !game) return;
+    // 1) арена/босс: приходит updateRespawnState; data[1]==0 — воскрес
+    if (!_origUpdateRespawnState && typeof game.updateRespawnState === "function") {
+      try {
+        var baseRS = game.updateRespawnState.bind(game);
+        game.updateRespawnState = function (data) {
+          var r = baseRS(data);
+          if (data && data[1] === 0 && cfg.phrases) {
+            setTimeout(sayRespawnPhrase, 700);
+          }
+          return r;
+        };
+        _origUpdateRespawnState = baseRS;
+        log("Перехват воскрешения подключён");
+      } catch (e) {}
+    }
+    // 2) FFA: рестарт через onReplayClick (реиграть)
+    if (!_origOnReplayClick && typeof window.onReplayClick === "function") {
+      try {
+        var baseRC = window.onReplayClick;
+        window.onReplayClick = function () {
+          var r = baseRC.apply(this, arguments);
+          if (cfg.phrases) setTimeout(sayRespawnPhrase, 400);
+          return r;
+        };
+        _origOnReplayClick = baseRC;
+      } catch (e) {}
+    }
+  }
+
+  // Быстрые сообщения (бинды)
   function updBinds() {
     // Отображает названия биндов на HUD-панели (если она есть) — расширяемо.
     // Сама отправка в чат реализуется под конкретную игру (см. sendBind).
@@ -206,6 +284,8 @@ window.MYMOD = (function () {
     w.innerHTML =
       "<h3 style='margin:0 0 14px;color:#66ccff'>MYMOD</h3>" +
       "<label style='display:block;margin:8px 0'><input type='checkbox' id='mymod_cfg_hud'> Показывать HUD</label>" +
+      "<label style='display:block;margin:8px 0'><input type='checkbox' id='mymod_cfg_phrases'> Фразы при убийстве/воскрешении</label>" +
+      "<button id='mymod_reset_kills' style='margin:6px 0;padding:4px 10px;cursor:pointer;border:none;border-radius:5px;background:#553322;color:#fff;font:inherit'>Сбросить счётчик убийств</button>" +
       "<div style='margin-top:12px;font-size:12px;color:#999'>Версия мода: <span id='mymod_ver'></span></div>" +
       "<div style='margin-top:18px;text-align:right'>" +
       "<button id='mymod_save' style='padding:8px 18px;cursor:pointer;border:none;border-radius:6px;background:#3377ff;color:#fff;font:inherit'>Сохранить</button>" +
@@ -213,11 +293,21 @@ window.MYMOD = (function () {
       "</div>";
 
     var cbH = w.querySelector("#mymod_cfg_hud");
+    var cbP = w.querySelector("#mymod_cfg_phrases");
     cbH.checked = !!cfg.hud;
+    cbP.checked = !!cfg.phrases;
     w.querySelector("#mymod_ver").textContent = MYMOD_VER;
+
+    // сброс счётчика убийств
+    w.querySelector("#mymod_reset_kills").onclick = function () {
+      killsCount = 0;
+      hudUpdate();
+      hint("Счётчик убийств сброшен");
+    };
 
     w.querySelector("#mymod_save").onclick = function () {
       cfg.hud = cbH.checked;
+      cfg.phrases = !!cbP.checked;
       saveCfg();                 // сохранить локально (без сервера)
       applyAll();
       closeSettings();
@@ -256,7 +346,8 @@ window.MYMOD = (function () {
   function init() {
     hudCreate();
     btnCreate();
-    patchKills();   // перехват счётчика убийств (если игра уже доступна)
+    patchKills();      // перехват счётчика убийств
+    patchRespawn();    // перехват воскрешения (фразы)
     applyAll();
 
     // периодический HUD-тик
