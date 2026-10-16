@@ -198,36 +198,56 @@ window.MYMOD = (function () {
   /* ---------------- Зум ---------------- */
   var zoomEnabled = false;
   var zoomHold = false;
+  var _cameraOrigUpdate = null;
 
-  // Мгновенный зум по зажатию клавиши C
+  // Игра каждый кадр вызывает camera.setTargetPosition([..., масштаб]),
+  // который затирает camera.target[Z]. Поэтому правильный способ —
+  // перехватить camera.update() и подменить итоговый масштаб ПОСЛЕ игры.
+  function makeZoomScale(base) {
+    // base — то, что игра посчитала сама. Возвращаем масштаб с учётом нашего зума.
+    var z = cfg.zoomKoef || 1;   // множитель из колеса мыши (1 = норма)
+    if (cfg.zoom && zoomHold) z *= 0.55; // зажатая C — приближение
+    return base * z;
+  }
+
+  function patchCamera() {
+    if (typeof camera === "undefined" || !camera) return;
+    if (_cameraOrigUpdate) return; // уже перехвачено
+    try {
+      var baseUpdate = camera.update.bind(camera);
+      camera.update = function () {
+        var r = baseUpdate();
+        // после того, как игра посчитала масштаб — применяем наш множитель
+        camera.scale = makeZoomScale(camera.scale);
+        return r;
+      };
+      _cameraOrigUpdate = baseUpdate;
+      log("Камера перехвачена для зума");
+    } catch (e) { log("Не удалось перехватить камеру: " + e.message); }
+  }
+
   function onKeyDown(e) {
     if (!cfg.zoom) return;
     if (e.key === "c" || e.key === "C" || e.keyCode === 67) {
       zoomHold = true;
-      if (typeof camera !== "undefined" && camera && camera.target) {
-        camera.target[Z] = (camera.target[Z] || 1) * 0.55; // приблизить
-      }
     }
   }
   function onKeyUp(e) {
     if (!cfg.zoom) return;
     if (e.key === "c" || e.key === "C" || e.keyCode === 67) {
       zoomHold = false;
-      if (typeof camera !== "undefined" && camera && camera.target) {
-        camera.target[Z] = 1; // вернуть нормальный масштаб
-      }
     }
   }
 
-  // Зум колесом мыши
+  // Зум колесом мыши: меняем множитель cfg.zoomKoef
   function onWheel(e) {
     if (!cfg.zoom) return;
-    if (typeof camera === "undefined" || !camera || !camera.target) return;
+    var cur = cfg.zoomKoef || 1;
     var step = e.deltaY > 0 ? 1.1 : 0.9; // вниз — дальше, вверх — ближе
-    var cur = camera.target[Z] || 1;
     var next = cur * step;
-    next = Math.max(0.3, Math.min(3, next)); // ограничение, чтобы не улететь
-    camera.target[Z] = next;
+    next = Math.max(0.4, Math.min(3, next)); // ограничение
+    cfg.zoomKoef = next;
+    saveCfg();
     if (e.preventDefault) e.preventDefault();
   }
 
@@ -235,8 +255,19 @@ window.MYMOD = (function () {
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);
     document.addEventListener("wheel", onWheel, { passive: false });
+    // перехватываем камеру при первом включении и периодически (если игра пересоздаёт)
+    patchedCamTries = 0;
+    patchCamera();
     zoomEnabled = !!cfg.zoom;
   }
+  var patchedCamTries = 0;
+  setInterval(function () {
+    if (cfg.zoom && !_cameraOrigUpdate) {
+      patchCamera();
+      patchedCamTries++;
+      if (patchedCamTries > 100) { /* достаточно попыток */ }
+    }
+  }, 2000);
 
   /* ---------------- Применение настроек ---------------- */
   function applyAll() {
